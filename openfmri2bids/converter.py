@@ -173,6 +173,9 @@ def convert(source_dir, dest_dir, empty_nii = False):
         for line in f:
             items = line.split()
             if items[0] == "TR":
-                scan_parameters_dict["repetition_time"] = float(items[1])
+                scan_parameters_dict["RepetitionTime"] = float(items[1])
     for task in tasks:
-        json.dump(scan_parameters_dict, open(os.path.join(dest_dir, "task_%s_bold.json"%sanitize_label(tasks_dict[task]['name'])), "w"))
+        scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
+        json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
+                                                          "task_%s_bold.json"%sanitize_label(tasks_dict[task]['name'])), "w"),
+                  sort_keys=True, indent=4, separators=(',', ': '))
