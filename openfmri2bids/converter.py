@@ -128,7 +128,6 @@ def convert(source_dir, dest_dir, empty_nii = False):
                     tmp_df["trial_type"] = condition_name
                     dfs.append(tmp_df)
                 events_df = pd.concat(dfs)
-                events_df = events_df.sort(columns=["onset"])
                 
                 
                 beh_path = os.path.join(source_dir, 
@@ -149,11 +148,14 @@ def convert(source_dir, dest_dir, empty_nii = False):
                     all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
 
                     # Set onset to the average of onsets reported in cond and behav since we do not know which one is true
+                    all_df["onset"].fillna(all_df["Onset"], inplace=True)
+                    all_df["Onset"].fillna(all_df["onset"], inplace=True)
                     all_df["onset"] = (all_df["onset"]+all_df["Onset"])/2.0
                     all_df = all_df.drop(["Onset","approx_onset"], axis=1)
                 else:
                     all_df = events_df
-                    
+                
+                all_df.sort(columns=["onset"], inplace=True)
                 dest = path.join(dest_dir, 
                                  BIDS_s,
                                  "functional",
