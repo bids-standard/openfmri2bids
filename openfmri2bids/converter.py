@@ -21,7 +21,7 @@ def convert(source_dir, dest_dir, empty_nii = False):
     openfmri_subjects = [s.split(os.sep)[-1] for s in glob(path.join(source_dir, "sub*"))]
     print("OpenfMRI subject IDs: " + str(openfmri_subjects))
     n_digits = len(str(len(openfmri_subjects)))
-    subject_template = "sub_%0" + str(n_digits) + "d"
+    subject_template = "sub-%0" + str(n_digits) + "d"
     BIDS_subjects = [subject_template%int(s[-3:]) for s in openfmri_subjects]
     print("BIDS subject IDs: " + str(BIDS_subjects))
     
@@ -54,11 +54,15 @@ def convert(source_dir, dest_dir, empty_nii = False):
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         for task in tasks:
             for run in tasks_dict[task]["runs"]:
+                if len(tasks_dict[task]["runs"]) == 1:
+                    trg_run = ""
+                else:
+                    trg_run = "_run%s"%run[4:]
                 mkdir(path.join(dest_dir, BIDS_s, "functional"))
                 dst = path.join(dest_dir, 
                                 BIDS_s, 
                                 "functional",
-                                "%s-%s-%s.nii.gz"%(BIDS_s, "task_%s"%sanitize_label(tasks_dict[task]['name']), "run_%s"%run[3:]))
+                                "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 if empty_nii:
                     open(dst, "w").close()
                 else:
@@ -86,22 +90,32 @@ def convert(source_dir, dest_dir, empty_nii = False):
                     int(run)
                 except:
                     continue
+                
+                if len([s for s in runs if s.isdigit()]) <= 1:
+                    trg_run = ""
+                else:
+                    trg_run = "_run%s"%run[4:]
                     
                 dst = path.join(dest_dir, 
                                 BIDS_s,
                                 "anatomy",
-                                "%s-%s-run_%s.nii.gz"%(BIDS_s,anatomy_bids,run))
+                                "%s_%s%s.nii.gz"%(BIDS_s,anatomy_bids,trg_run))
                 if empty_nii:
                     open(dst, "w").close()
                 else:
                     shutil.copy(path.join(source_dir, 
-                                                      openfmri_s, 
-                                                      "anatomy", 
-                                                      "%s%s.nii.gz"%(anatomy_openfmri, run)), dst)
+                                          openfmri_s, 
+                                          "anatomy", 
+                                          "%s%s.nii.gz"%(anatomy_openfmri, run)), dst)
     
     for task in tasks_dict.keys():
         for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
             for run in tasks_dict[task]["runs"]:
+                if len(tasks_dict[task]["runs"]) == 1:
+                    trg_run = ""
+                else:
+                    trg_run = "_run%s"%run[4:]
+
                 dfs = []
                 for condition_id, condition_name in tasks_dict[task]["conditions"].iteritems():
                     # TODO: check if onsets are in seconds
@@ -143,6 +157,10 @@ def convert(source_dir, dest_dir, empty_nii = False):
                                              engine="python",
                                              index_col=False
                                             )
+                    
+                    if "Onset" not in beh_df.columns:
+                        beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
+                        
                     beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
 
                     all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
@@ -159,7 +177,7 @@ def convert(source_dir, dest_dir, empty_nii = False):
                 dest = path.join(dest_dir, 
                                  BIDS_s,
                                  "functional",
-                                 "%s-%s-%s-events.tsv"%(BIDS_s, "task_%s"%sanitize_label(tasks_dict[task]['name']), "run_%s"%run[3:]))            
+                                 "%s_%s%s_events.tsv"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))            
                 all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
 
     id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
@@ -177,5 +195,5 @@ def convert(source_dir, dest_dir, empty_nii = False):
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
-                                                          "task_%s_bold.json"%sanitize_label(tasks_dict[task]['name'])), "w"),
+                                                          "task-%s_bold.json"%sanitize_label(tasks_dict[task]['name'])), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
