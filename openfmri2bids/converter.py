@@ -13,7 +13,7 @@ from glob import glob
 def sanitize_label(label):
     return re.sub("[^a-zA-Z0-9]*", "", label)
 
-def convert(source_dir, dest_dir, empty_nii = False, warning=print):
+def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_not_events=False):
     def mkdir(path):
         try:
             os.mkdir(path)
@@ -113,8 +113,10 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print):
                                           "anatomy", 
                                           "%s%s.nii.gz"%(anatomy_openfmri, run)), dst)
     
-    for task in tasks_dict.keys():
-        for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
+    
+    for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
+        scans_dfs = []
+        for task in tasks_dict.keys():
             for run in tasks_dict[task]["runs"]:
                 if len(tasks_dict[task]["runs"]) == 1:
                     trg_run = ""
@@ -170,25 +172,38 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print):
                                         "behavdata.txt")
                 if os.path.exists(beh_path):
                     # There is a timing discrepancy between cond and behav - we need to use approximation to match them
-                    events_df["approx_onset"] = np.around(events_df["onset"],1)
                     beh_df = pd.read_csv(beh_path,
                                          sep="\t",
                                          engine="python",
                                          index_col=False
                                          )
-                    
                     if "Onset" not in beh_df.columns:
-                        beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
-                        
-                    beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
-
-                    all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
-
-                    # Set onset to the average of onsets reported in cond and behav since we do not know which one is true
-                    all_df["onset"].fillna(all_df["Onset"], inplace=True)
-                    all_df["Onset"].fillna(all_df["onset"], inplace=True)
-                    all_df["onset"] = (all_df["onset"]+all_df["Onset"])/2.0
-                    all_df = all_df.drop(["Onset","approx_onset"], axis=1)
+                        if "onset" not in beh_df.columns:
+                            # behdata are not events
+                            beh_df = pd.read_csv(beh_path,
+                                         sep=" ",
+                                         engine="python",
+                                         index_col=False
+                                         )
+                            beh_df["filename"] = path.join("functional",
+                                                           "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                            beh_df.set_index("filename", inplace=True)
+                            scans_dfs.append(beh_df)
+                            all_df = events_df
+                        else:
+                            beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
+                    
+                    if not scans_dfs:
+                        events_df["approx_onset"] = np.around(events_df["onset"],1)
+                        beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
+    
+                        all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
+    
+                        # Set onset to the average of onsets reported in cond and behav since we do not know which one is true
+                        all_df["onset"].fillna(all_df["Onset"], inplace=True)
+                        all_df["Onset"].fillna(all_df["onset"], inplace=True)
+                        all_df["onset"] = (all_df["onset"]+all_df["Onset"])/2.0
+                        all_df = all_df.drop(["Onset","approx_onset"], axis=1)
                 else:
                     all_df = events_df
                 
@@ -198,6 +213,13 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print):
                                  "functional",
                                  "%s_%s%s_events.tsv"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))            
                 all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
+                
+        if scans_dfs:
+            all_df = pd.concat(scans_dfs)
+            all_df.to_csv(path.join(dest_dir, 
+                                    BIDS_s,
+                                    "%s_scans.tsv"%BIDS_s), sep="\t", na_rep="n/a", index=True)
+                    
 
     id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
     participants = pd.read_csv(os.path.join(source_dir,"demographics.txt"), sep="\t", 
