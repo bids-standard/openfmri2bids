@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import shutil
 import json
@@ -8,10 +9,11 @@ from os import path
 from glob import glob
 
 
+
 def sanitize_label(label):
     return re.sub("[^a-zA-Z0-9]*", "", label)
 
-def convert(source_dir, dest_dir, empty_nii = False):
+def convert(source_dir, dest_dir, empty_nii = False, warning=print):
     def mkdir(path):
         try:
             os.mkdir(path)
@@ -49,7 +51,6 @@ def convert(source_dir, dest_dir, empty_nii = False):
         for line in f:
             words = line.split()
             tasks_dict[words[0]]['name'] = " ".join(words[1:])
-    print tasks_dict
     
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         for task in tasks:
@@ -63,14 +64,18 @@ def convert(source_dir, dest_dir, empty_nii = False):
                                 BIDS_s, 
                                 "functional",
                                 "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                src = path.join(source_dir, 
+                                openfmri_s, 
+                                "BOLD", 
+                                "%s_%s"%(task, run), 
+                                "bold.nii.gz")
+                if not os.path.exists(src):
+                    warning("%s does not exist"%src)
+                    continue
                 if empty_nii:
                     open(dst, "w").close()
                 else:
-                    shutil.copy(path.join(source_dir, 
-                                          openfmri_s, 
-                                          "BOLD", 
-                                          "%s_%s"%(task, run), 
-                                          "bold.nii.gz"), dst)
+                    shutil.copy(src, dst)
     
     anatomy_mapping = {"highres": "T1w",
                        "inplane": "inplaneT2"}
@@ -119,21 +124,32 @@ def convert(source_dir, dest_dir, empty_nii = False):
                 dfs = []
                 for condition_id, condition_name in tasks_dict[task]["conditions"].iteritems():
                     # TODO: check if onsets are in seconds
-                    print os.path.join(source_dir, 
-                                                      openfmri_s, 
-                                                      "model", 
-                                                      "model001", 
-                                                      "onsets", 
-                                                      "%s_%s"%(task, run), 
-                                                      "%s.txt"%condition_id)
-                    tmp_df = pd.read_csv(os.path.join(source_dir, 
+                    fpath = os.path.join(source_dir, 
+                                       openfmri_s, 
+                                       "model", 
+                                       "model001", 
+                                       "onsets", 
+                                       "%s_%s"%(task, run), 
+                                       "%s.txt"%condition_id)
+                    if not os.path.exists(fpath):
+                        warning("%s does not exist"%fpath)
+                        continue
+                    tmp_df = pd.read_csv(fpath,
+                                         sep="\t",
+                                         names=["onset", "duration", "weight"], 
+                                         header=None,
+                                         engine="python",
+                                         index_col=False
+                                        )
+                    if tmp_df.duration.isnull().sum() > 0:
+                        tmp_df = pd.read_csv(os.path.join(source_dir, 
                                                       openfmri_s, 
                                                       "model", 
                                                       "model001", 
                                                       "onsets", 
                                                       "%s_%s"%(task, run), 
                                                       "%s.txt"%condition_id),
-                                         sep="\t",
+                                         sep=" ",
                                          names=["onset", "duration", "weight"], 
                                          header=None,
                                          engine="python",
@@ -141,7 +157,10 @@ def convert(source_dir, dest_dir, empty_nii = False):
                                         )
                     tmp_df["trial_type"] = condition_name
                     dfs.append(tmp_df)
-                events_df = pd.concat(dfs)
+                if dfs:
+                    events_df = pd.concat(dfs)
+                else:
+                    continue
                 
                 
                 beh_path = os.path.join(source_dir, 
@@ -153,10 +172,10 @@ def convert(source_dir, dest_dir, empty_nii = False):
                     # There is a timing discrepancy between cond and behav - we need to use approximation to match them
                     events_df["approx_onset"] = np.around(events_df["onset"],1)
                     beh_df = pd.read_csv(beh_path,
-                                             sep="\t",
-                                             engine="python",
-                                             index_col=False
-                                            )
+                                         sep="\t",
+                                         engine="python",
+                                         index_col=False
+                                         )
                     
                     if "Onset" not in beh_df.columns:
                         beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
