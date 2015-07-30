@@ -124,6 +124,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                     trg_run = "_run%s"%run[4:]
 
                 dfs = []
+                parametric_columns = []
                 for condition_id, condition_name in tasks_dict[task]["conditions"].iteritems():
                     # TODO: check if onsets are in seconds
                     fpath = os.path.join(source_dir, 
@@ -158,9 +159,15 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                                          index_col=False
                                         )
                     tmp_df["trial_type"] = condition_name
+                    if len(tmp_df["weight"].unique()) != 1:
+                        tmp_df[condition_name] = tmp_df["weight"]
+                        parametric_columns.append(condition_name)
                     dfs.append(tmp_df)
                 if dfs:
                     events_df = pd.concat(dfs)
+                    if(parametric_columns):
+                        events_df = events_df.sort(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], take_last=True)
+                    events_df.drop('weight', axis=1, inplace=True)
                 else:
                     continue
                 
@@ -219,12 +226,16 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
             all_df.to_csv(path.join(dest_dir, 
                                     BIDS_s,
                                     "%s_scans.tsv"%BIDS_s), sep="\t", na_rep="n/a", index=True)
-                    
-
+            
+    dem_file = os.path.join(source_dir,"demographics.txt")
     id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
-    participants = pd.read_csv(os.path.join(source_dir,"demographics.txt"), sep="\t", 
-                               header=None, names=["dataset", "subject_id", "sex", "age"]).drop(["dataset"], axis=1)
-    participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
+    participants = pd.read_csv(dem_file, sep="\t")
+    if "subject_id" in participants.columns:
+        participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
+    else:
+        participants = pd.read_csv(dem_file, sep="\t", 
+                                   header=None, names=["dataset", "subject_id", "sex", "age"]).drop(["dataset"], axis=1)
+        participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
     participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False)
     
     scan_parameters_dict = {}
