@@ -39,6 +39,8 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
     
     with open(os.path.join(source_dir, "models", "model001", "condition_key.txt")) as f:
         for line in f:
+            if line.strip() == "":
+                break
             items = line.split()
             task = items[0]
             condition = items[1]
@@ -229,12 +231,12 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
             
     dem_file = os.path.join(source_dir,"demographics.txt")
     id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
-    participants = pd.read_csv(dem_file, sep="\t")
+    participants = pd.read_csv(dem_file, sep="\t", skip_blank_lines=True)
     if "subject_id" in participants.columns:
         participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
     else:
         participants = pd.read_csv(dem_file, sep="\t", 
-                                   header=None, names=["dataset", "subject_id", "sex", "age"]).drop(["dataset"], axis=1)
+                                   header=None, names=["dataset", "subject_id", "sex", "age"], skip_blank_lines=True).drop(["dataset"], axis=1)
         participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
     participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False)
     
