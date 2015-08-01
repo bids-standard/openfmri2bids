@@ -7,18 +7,28 @@ import pandas as pd
 import numpy as np
 from os import path
 from glob import glob
+import errno
+
 
 
 
 def sanitize_label(label):
     return re.sub("[^a-zA-Z0-9]*", "", label)
 
-def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_not_events=False):
+def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
+    if ses:
+        folder_ses = "ses-%s"%ses
+        filename_ses = "%s_"%folder_ses
+    else:
+        folder_ses = ""
+        filename_ses = ""
     def mkdir(path):
         try:
-            os.mkdir(path)
-        except OSError:
-            pass
+            os.makedirs(path)
+        except OSError as exc: # Python >2.5
+            if exc.errno == errno.EEXIST and os.path.isdir(path):
+                pass
+            else: raise
     
     openfmri_subjects = [s.split(os.sep)[-1] for s in glob(path.join(source_dir, "sub*"))]
     print("OpenfMRI subject IDs: " + str(openfmri_subjects))
@@ -61,11 +71,12 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                     trg_run = ""
                 else:
                     trg_run = "_run%s"%run[4:]
-                mkdir(path.join(dest_dir, BIDS_s, "functional"))
+                mkdir(path.join(dest_dir, BIDS_s, folder_ses, "functional"))
                 dst = path.join(dest_dir, 
-                                BIDS_s, 
+                                BIDS_s,
+                                folder_ses, 
                                 "functional",
-                                "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "BOLD", 
@@ -83,7 +94,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                        "inplane": "inplaneT2"}
                     
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
-        mkdir(path.join(dest_dir, BIDS_s, "anatomy"))
+        mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anatomy"))
         for anatomy_openfmri, anatomy_bids in anatomy_mapping.iteritems():
             runs = [s[-10:-7] for s in glob(path.join(source_dir, 
                                                       openfmri_s, 
@@ -105,8 +116,9 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                     
                 dst = path.join(dest_dir, 
                                 BIDS_s,
+                                folder_ses,
                                 "anatomy",
-                                "%s_%s%s.nii.gz"%(BIDS_s,anatomy_bids,trg_run))
+                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, anatomy_bids,trg_run))
                 if empty_nii:
                     open(dst, "w").close()
                 else:
@@ -139,12 +151,16 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                     if not os.path.exists(fpath):
                         warning("%s does not exist"%fpath)
                         continue
+                    if os.stat(fpath).st_size == 0:
+                        warning("%s is empty"%fpath)
+                        continue
                     tmp_df = pd.read_csv(fpath,
-                                         sep="\t",
+                                         delimiter=r"\s+",
                                          names=["onset", "duration", "weight"], 
                                          header=None,
                                          engine="python",
-                                         index_col=False
+                                         index_col=False,
+                                         skip_blank_lines=True
                                         )
                     if tmp_df.duration.isnull().sum() > 0:
                         tmp_df = pd.read_csv(os.path.join(source_dir, 
@@ -181,64 +197,85 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
                                         "behavdata.txt")
                 if os.path.exists(beh_path):
                     # There is a timing discrepancy between cond and behav - we need to use approximation to match them
-                    beh_df = pd.read_csv(beh_path,
-                                         sep="\t",
-                                         engine="python",
-                                         index_col=False
-                                         )
-                    if "Onset" not in beh_df.columns:
-                        if "onset" not in beh_df.columns:
-                            # behdata are not events
-                            beh_df = pd.read_csv(beh_path,
-                                         sep=" ",
-                                         engine="python",
-                                         index_col=False
-                                         )
-                            beh_df["filename"] = path.join("functional",
-                                                           "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
-                            beh_df.set_index("filename", inplace=True)
-                            scans_dfs.append(beh_df)
-                            all_df = events_df
-                        else:
-                            beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
+                    if os.stat(beh_path).st_size == 0:
+                        warning("%s is empty"%beh_path)
+                        all_df = events_df
+                    else:
+                        beh_df = pd.read_csv(beh_path,
+                                             delimiter=r"\s+",
+                                             engine="python",
+                                             index_col=False
+                                             )
+                        if "Onset" not in beh_df.columns:
+                            if "onset" not in beh_df.columns:
+                                # behdata are not events
+                                beh_df = pd.read_csv(beh_path,
+                                             sep=" ",
+                                             engine="python",
+                                             index_col=False
+                                             )
+                                beh_df["filename"] = path.join("functional",
+                                                               "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                beh_df.set_index("filename", inplace=True)
+                                scans_dfs.append(beh_df)
+                                all_df = events_df
+                            else:
+                                beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
-                    if not scans_dfs:
-                        events_df["approx_onset"] = np.around(events_df["onset"],1)
-                        beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
-    
-                        all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
-    
-                        # Set onset to the average of onsets reported in cond and behav since we do not know which one is true
-                        all_df["onset"].fillna(all_df["Onset"], inplace=True)
-                        all_df["Onset"].fillna(all_df["onset"], inplace=True)
-                        all_df["onset"] = (all_df["onset"]+all_df["Onset"])/2.0
-                        all_df = all_df.drop(["Onset","approx_onset"], axis=1)
+                        if not scans_dfs:
+                            events_df["approx_onset"] = np.around(events_df["onset"],1)
+                            beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
+        
+                            all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
+        
+                            # Set onset to the average of onsets reported in cond and behav since we do not know which one is true
+                            all_df["onset"].fillna(all_df["Onset"], inplace=True)
+                            all_df["Onset"].fillna(all_df["onset"], inplace=True)
+                            all_df["onset"] = (all_df["onset"]+all_df["Onset"])/2.0
+                            all_df = all_df.drop(["Onset","approx_onset"], axis=1)
                 else:
                     all_df = events_df
                 
                 all_df.sort(columns=["onset"], inplace=True)
                 dest = path.join(dest_dir, 
                                  BIDS_s,
+                                 folder_ses,
                                  "functional",
-                                 "%s_%s%s_events.tsv"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))            
+                                 "%s_%s%s%s_events.tsv"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                #remove rows with zero duration:
+                if (all_df.duration == 0).sum() > 0:
+                    warning("%s original data had events with zero duration - removing."%dest)
+                    warning(str(all_df[all_df.duration == 0] ))
+                    all_df = all_df[all_df.duration != 0]
+                # put onset, duration and trial_type in front
+                cols = all_df.columns.tolist()
+                cols.insert(0, cols.pop(cols.index("onset")))
+                cols.insert(1, cols.pop(cols.index("duration")))
+                cols.insert(2, cols.pop(cols.index("trial_type")))
+                all_df = all_df[cols]
+                
                 all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
                 
         if scans_dfs:
             all_df = pd.concat(scans_dfs)
             all_df.to_csv(path.join(dest_dir, 
                                     BIDS_s,
-                                    "%s_scans.tsv"%BIDS_s), sep="\t", na_rep="n/a", index=True)
+                                    folder_ses,
+                                    "%s%s_scans.tsv"%(filename_ses, BIDS_s)), sep="\t", na_rep="n/a", index=True)
             
     dem_file = os.path.join(source_dir,"demographics.txt")
-    id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
-    participants = pd.read_csv(dem_file, sep="\t", skip_blank_lines=True)
-    if "subject_id" in participants.columns:
-        participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
+    if not os.path.exists(dem_file):
+        warning("%s does not exist"%dem_file)
     else:
-        participants = pd.read_csv(dem_file, sep="\t", 
-                                   header=None, names=["dataset", "subject_id", "sex", "age"], skip_blank_lines=True).drop(["dataset"], axis=1)
-        participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
-    participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False)
+        id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
+        participants = pd.read_csv(dem_file, delimiter=r"\s+", skip_blank_lines=True)
+        if "subject_id" in participants.columns:
+            participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
+        else:
+            participants = pd.read_csv(dem_file, delimiter=r"\s+", 
+                                       header=None, names=["dataset", "subject_id", "sex", "age"], skip_blank_lines=True).drop(["dataset"], axis=1)
+            participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
+        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False)
     
     scan_parameters_dict = {}
     with open(os.path.join(source_dir, "scan_key.txt")) as f:
@@ -249,5 +286,5 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, bahavdata_no
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
-                                                          "task-%s_bold.json"%sanitize_label(tasks_dict[task]['name'])), "w"),
+                                                          "%stask-%s_bold.json"%(filename_ses, sanitize_label(tasks_dict[task]['name']))), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
