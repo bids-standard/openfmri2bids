@@ -127,7 +127,13 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                                           "anatomy", 
                                           "%s%s.nii.gz"%(anatomy_openfmri, run)), dst)
     
-    
+    scan_parameters_dict = {}
+    with open(os.path.join(source_dir, "scan_key.txt")) as f:
+        for line in f:
+            items = line.split()
+            if items[0] == "TR":
+                scan_parameters_dict["RepetitionTime"] = float(items[1])
+
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         scans_dfs = []
         for task in tasks_dict.keys():
@@ -182,7 +188,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                         parametric_columns.append(condition_name)
                     dfs.append(tmp_df)
                 if dfs:
-                    events_df = pd.concat(dfs)
+                    events_df = pd.concat(dfs, ignore_index=True)
                     if(parametric_columns):
                         events_df = events_df.sort(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], take_last=True)
                     events_df.drop('weight', axis=1, inplace=True)
@@ -201,28 +207,58 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                         warning("%s is empty"%beh_path)
                         all_df = events_df
                     else:
+                        unlabeled_beh = False
                         beh_df = pd.read_csv(beh_path,
-                                             delimiter=r"\s+",
+                                             sep=None,
+                                             #delimiter=r"\s+",
                                              engine="python",
                                              index_col=False
                                              )
+                        if 'TrialOnset' in beh_df.columns:
+                            beh_df.rename(columns={'TrialOnset': 'Onset'}, inplace=True)
+                        if 'TR' in beh_df.columns:
+                            beh_df["TR"] = (beh_df["TR"]-1)*scan_parameters_dict["RepetitionTime"]
+                            beh_df["duration"] = beh_df['TR'].map(lambda x: scan_parameters_dict["RepetitionTime"])
+                            beh_df.rename(columns={'TR': 'onset'}, inplace=True)
+                            all_df = pd.concat([events_df, beh_df])
+                            unlabeled_beh = True
+                            
                         if "Onset" not in beh_df.columns:
                             if "onset" not in beh_df.columns:
-                                # behdata are not events
-                                beh_df = pd.read_csv(beh_path,
-                                             sep=" ",
-                                             engine="python",
-                                             index_col=False
-                                             )
-                                beh_df["filename"] = path.join("functional",
-                                                               "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
-                                beh_df.set_index("filename", inplace=True)
-                                scans_dfs.append(beh_df)
-                                all_df = events_df
+                                beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
+                                if len(beh_df_no_header.index) == len(events_df.index):
+                                    events_df.sort(columns=["onset"], inplace=True)
+                                    events_df.index = range(len(events_df))
+                                    all_df = pd.concat([events_df, beh_df_no_header], axis=1)
+                                    unlabeled_beh = True
+                                elif len(beh_df.index) == len(events_df.index):
+                                    events_df.sort(columns=["onset"], inplace=True)
+                                    events_df.index = range(len(events_df))
+                                    all_df = pd.concat([events_df, beh_df], axis=1)
+                                    unlabeled_beh = True
+                                else:
+                                    # behdata are not events
+                                    try:
+                                        beh_df = pd.read_csv(beh_path,
+                                                 sep=" ",
+                                                 engine="python",
+                                                 index_col=False
+                                                 )
+                                    except:
+                                        beh_df = pd.read_csv(beh_path,
+                                                 sep=",",
+                                                 engine="python",
+                                                 index_col=False
+                                                 )
+                                    beh_df["filename"] = path.join("functional",
+                                                                   "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                    beh_df.set_index("filename", inplace=True)
+                                    scans_dfs.append(beh_df)
+                                    all_df = events_df
                             else:
                                 beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
-                        if not scans_dfs:
+                        if not scans_dfs and not unlabeled_beh:
                             events_df["approx_onset"] = np.around(events_df["onset"],1)
                             beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
         
@@ -272,17 +308,11 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
         if "subject_id" in participants.columns:
             participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
         else:
-            participants = pd.read_csv(dem_file, delimiter=r"\s+", 
-                                       header=None, names=["dataset", "subject_id", "sex", "age"], skip_blank_lines=True).drop(["dataset"], axis=1)
+            participants = pd.read_csv(dem_file, delimiter=r"\s+", header=None, names=["dataset", "subject_id", "sex", "age", "handedness", "ethnicity"], skip_blank_lines=True).drop(["dataset"], axis=1)
             participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
-        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False)
+        participants = participants.dropna(axis=1,how='all')
+        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a")
     
-    scan_parameters_dict = {}
-    with open(os.path.join(source_dir, "scan_key.txt")) as f:
-        for line in f:
-            items = line.split()
-            if items[0] == "TR":
-                scan_parameters_dict["RepetitionTime"] = float(items[1])
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
