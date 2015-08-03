@@ -5,12 +5,9 @@ Convert OpenfMRI dataset to BIDS.
 
 # Installation
 
-If you don't use `pipsi`, you're missing out.
-Here are [installation instructions](https://github.com/mitsuhiko/pipsi#readme).
-
 Simply run:
 
-    $ pipsi install .
+    $ pip install git+https://github.com/INCF/openfmri2bids.git
 
 
 # Usage
