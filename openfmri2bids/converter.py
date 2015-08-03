@@ -76,7 +76,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                                 BIDS_s,
                                 folder_ses, 
                                 "functional",
-                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                "%s_%s%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "BOLD", 
@@ -101,8 +101,10 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                                                       "anatomy", 
                                                       "%s*.nii.gz"%anatomy_openfmri))]
             for run in runs:
+                src_run = run
                 if run == anatomy_openfmri[-3:]:
                     run = "001"
+                    src_run=""
                 # dirty hack
                 try:
                     int(run)
@@ -112,7 +114,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                 if len([s for s in runs if s.isdigit()]) <= 1:
                     trg_run = ""
                 else:
-                    trg_run = "_run%s"%run[4:]
+                    trg_run = "_run%s"%run[1:]
                     
                 dst = path.join(dest_dir, 
                                 BIDS_s,
@@ -125,7 +127,7 @@ def convert(source_dir, dest_dir, empty_nii = False, warning=print, ses=""):
                     shutil.copy(path.join(source_dir, 
                                           openfmri_s, 
                                           "anatomy", 
-                                          "%s%s.nii.gz"%(anatomy_openfmri, run)), dst)
+                                          "%s%s.nii.gz"%(anatomy_openfmri, src_run)), dst)
     
     scan_parameters_dict = {}
     with open(os.path.join(source_dir, "scan_key.txt")) as f:
