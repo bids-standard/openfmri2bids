@@ -94,7 +94,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 BIDS_s,
                                 folder_ses, 
                                 "functional",
-                                "%s_%s%s_bold%s.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                "%s_%s_%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "BOLD", 
@@ -136,7 +136,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 BIDS_s,
                                 folder_ses,
                                 "anatomy",
-                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, anatomy_bids, trg_run))
+                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, trg_run, anatomy_bids))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "anatomy", 
@@ -268,7 +268,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                                  index_col=False
                                                  )
                                     beh_df["filename"] = path.join("functional",
-                                                                   "%s_%s%s.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                                                   "%s_%s%s_bold.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                                     beh_df.set_index("filename", inplace=True)
                                     scans_dfs.append(beh_df)
                                     all_df = events_df
@@ -294,7 +294,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                  BIDS_s,
                                  folder_ses,
                                  "functional",
-                                 "%s_%s%s_events%s.tsv"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                 "%s_%s%s%s_events.tsv"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 #remove rows with zero duration:
                 if (all_df.duration == 0).sum() > 0:
                     warning("%s original data had events with zero duration - removing."%dest)
