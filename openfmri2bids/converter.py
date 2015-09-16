@@ -89,12 +89,12 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     trg_run = ""
                 else:
                     trg_run = "_run-%s"%run[4:]
-                mkdir(path.join(dest_dir, BIDS_s, folder_ses, "functional"))
+                mkdir(path.join(dest_dir, BIDS_s, folder_ses, "func"))
                 dst = path.join(dest_dir, 
                                 BIDS_s,
                                 folder_ses, 
-                                "functional",
-                                "%s_%s_%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                "func",
+                                "%s_%s%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "BOLD", 
@@ -110,7 +110,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                        "inplane": "inplaneT2"}
                     
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
-        mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anatomy"))
+        mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anat"))
         for anatomy_openfmri, anatomy_bids in anatomy_mapping.iteritems():
             runs = [s[-10:-7] for s in glob(path.join(source_dir, 
                                                       openfmri_s, 
@@ -135,7 +135,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 dst = path.join(dest_dir, 
                                 BIDS_s,
                                 folder_ses,
-                                "anatomy",
+                                "anat",
                                 "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, trg_run, anatomy_bids))
                 src = path.join(source_dir, 
                                 openfmri_s, 
@@ -267,8 +267,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                                  engine="python",
                                                  index_col=False
                                                  )
-                                    beh_df["filename"] = path.join("functional",
-                                                                   "%s_%s%s_bold.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                    beh_df["filename"] = path.join("func",
+                                                                   "%s%s%s_bold.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                                     beh_df.set_index("filename", inplace=True)
                                     scans_dfs.append(beh_df)
                                     all_df = events_df
@@ -293,7 +293,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 dest = path.join(dest_dir, 
                                  BIDS_s,
                                  folder_ses,
-                                 "functional",
+                                 "func",
                                  "%s_%s%s%s_events.tsv"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 #remove rows with zero duration:
                 if (all_df.duration == 0).sum() > 0:
