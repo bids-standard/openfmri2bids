@@ -79,6 +79,8 @@ def convert_dataset_metadata(in_dir, out_dir):
     readme = os.path.join(in_dir, "README")
     if os.path.exists(readme):
         shutil.copy(readme, os.path.join(out_dir,"README"))
+    elif os.path.exists(readme + ".txt"):
+        shutil.copy(readme + ".txt", os.path.join(out_dir,"README"))
 
 def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=print, ses="", changelog_converter=convert_changelog):
     if ses:
