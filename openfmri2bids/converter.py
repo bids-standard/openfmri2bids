@@ -10,6 +10,9 @@ from glob import glob
 
 import pandas as pd
 import numpy as np
+import datetime
+import dateutil
+from sphinx.addnodes import desc, desc_addname
 
 NII_HANDLING_OPTS = ['empty', 'move', 'copy', 'link']  # first entry is default
 
@@ -31,8 +34,53 @@ def handle_nii(opt, src=None, dest=None):
         os.symlink(src, dest)
     else:
         raise NotImplementedError('Unrecognized nii_handling value: %s' % opt)
+    
+def convert_changelog(in_file, out_file):
+    versions = []
+    out_str = ""
+    for line in open(in_file).readlines():
+        if len(line.strip()) > 0:
+            if len(line.split(":")) == 1:
+                out_str += "    " + desc
+            else:
+                if out_str:
+                    versions.append(out_str)
+                date_str = line.split(":")[0]
+                print(line)
+                desc = line.split(":")[1]
+                date = dateutil.parser.parse(date_str)
+                out_str = date.strftime("%Y-%m-%d\n\n")
+                out_str += "  - " + desc
+    
+    if versions:    
+        versions = ["1.0.%d "%i + version for i, version in enumerate(versions)]
+        with open(out_file, "w") as f:
+            f.write("\n\n".join(versions))
 
-def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=print, ses=""):
+def convert_dataset_metadata(in_dir, out_dir):
+    meta_dict = {}
+    
+    study_key_file = os.path.join(in_dir, "study_key.txt")
+    if os.path.exists(study_key_file):
+        meta_dict["Name"] = open(study_key_file).read().strip()
+        
+    ref_file = os.path.join(in_dir, "references.txt")
+    if os.path.exists(ref_file):
+        meta_dict["ReferencesAndLinks"] = open(ref_file).read().strip()
+        
+    lic_file = os.path.join(in_dir, "license.txt")
+    if os.path.exists(lic_file):
+        meta_dict["License"] = open(lic_file).read().strip()
+        
+    json.dump(meta_dict, open(os.path.join(out_dir,
+                                           "dataset_description.json"), "w"),
+                  sort_keys=True, indent=4, separators=(',', ': '))
+              
+    readme = os.path.join(in_dir, "README")
+    if os.path.exists(readme):
+        shutil.copy(readme, os.path.join(out_dir,"README"))
+
+def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=print, ses="", changelog_converter=convert_changelog):
     if ses:
         folder_ses = "ses-%s"%ses
         filename_ses = "%s_"%folder_ses
@@ -335,3 +383,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
                                                           "%stask-%s_bold.json"%(filename_ses, sanitize_label(tasks_dict[task]['name']))), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
+        
+    convert_dataset_metadata(source_dir, dest_dir)
+    if os.path.exists(os.path.join(source_dir, "release_history.txt")):
+        changelog_converter(os.path.join(source_dir, "release_history.txt"), os.path.join(dest_dir, "CHANGES"))
