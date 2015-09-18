@@ -36,7 +36,8 @@ def handle_nii(opt, src=None, dest=None):
         raise NotImplementedError('Unrecognized nii_handling value: %s' % opt)
     
 def convert_changelog(in_file, out_file):
-    versions = []
+    versions = {}
+    date = None
     out_str = ""
     for line in open(in_file).readlines():
         if len(line.strip()) > 0:
@@ -44,18 +45,20 @@ def convert_changelog(in_file, out_file):
                 out_str += "    " + desc
             else:
                 if out_str:
-                    versions.append(out_str)
+                    versions[date] = out_str
                 date_str = line.split(":")[0]
                 print(line)
                 desc = line.split(":")[1]
                 date = dateutil.parser.parse(date_str)
                 out_str = date.strftime("%Y-%m-%d\n\n")
                 out_str += "  - " + desc
+    if out_str:
+        versions[date] = out_str
     
     if versions:    
-        versions = ["1.0.%d "%i + version for i, version in enumerate(versions)]
+        versions = ["1.0.%d "%i + version[1] for i, version in enumerate(sorted(versions.items()))]
         with open(out_file, "w") as f:
-            f.write("\n\n".join(versions))
+            f.write("\n\n".join(reversed(versions)))
 
 def convert_dataset_metadata(in_dir, out_dir):
     meta_dict = {}
@@ -85,7 +88,7 @@ def convert_dataset_metadata(in_dir, out_dir):
 def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=print, ses="", changelog_converter=convert_changelog):
     if ses:
         folder_ses = "ses-%s"%ses
-        filename_ses = "%s_"%folder_ses
+        filename_ses = "_%s"%folder_ses
     else:
         folder_ses = ""
         filename_ses = ""
@@ -144,7 +147,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 BIDS_s,
                                 folder_ses, 
                                 "func",
-                                "%s_%s%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                "%s%s%s%s_bold.nii.gz"%(BIDS_s, filename_ses, "_task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "BOLD", 
@@ -165,7 +168,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
             runs = [s[-10:-7] for s in glob(path.join(source_dir, 
                                                       openfmri_s, 
                                                       "anatomy", 
-                                                      "%s*.nii.gz"%anatomy_openfmri))]
+                                                      "%s*.nii.gz"%anatomy_openfmri)) if len(s.split("/")[-1]) == len("%s000.nii.gz"%anatomy_openfmri)]
             for run in runs:
                 src_run = run
                 if run == anatomy_openfmri[-3:]:
@@ -186,7 +189,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 BIDS_s,
                                 folder_ses,
                                 "anat",
-                                "%s_%s%s%s.nii.gz"%(BIDS_s, filename_ses, trg_run, anatomy_bids))
+                                "%s%s%s_%s.nii.gz"%(BIDS_s, filename_ses, trg_run, anatomy_bids))
                 src = path.join(source_dir, 
                                 openfmri_s, 
                                 "anatomy", 
@@ -344,7 +347,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                  BIDS_s,
                                  folder_ses,
                                  "func",
-                                 "%s_%s%s%s_events.tsv"%(BIDS_s, filename_ses, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                 "%s%s%s%s_events.tsv"%(BIDS_s, filename_ses, "_task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
                 #remove rows with zero duration:
                 if (all_df.duration == 0).sum() > 0:
                     warning("%s original data had events with zero duration - removing."%dest)
@@ -361,10 +364,14 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 
         if scans_dfs:
             all_df = pd.concat(scans_dfs)
+            if filename_ses:
+                filename_ses_b = filename_ses[1:] + "_"
+            else:
+                filename_ses_b = ""
             all_df.to_csv(path.join(dest_dir, 
                                     BIDS_s,
                                     folder_ses,
-                                    "%s%s_scans.tsv"%(filename_ses, BIDS_s)), sep="\t", na_rep="n/a", index=True)
+                                    "%s%s_scans.tsv"%(filename_ses_b, BIDS_s)), sep="\t", na_rep="n/a", index=True)
             
     dem_file = os.path.join(source_dir,"demographics.txt")
     if not os.path.exists(dem_file):
@@ -382,6 +389,10 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
+        if filename_ses:
+            filename_ses_b = filename_ses[1:] + "_"
+        else:
+            filename_ses_b = ""
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
                                                           "%stask-%s_bold.json"%(filename_ses, sanitize_label(tasks_dict[task]['name']))), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
