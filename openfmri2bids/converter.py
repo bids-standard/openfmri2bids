@@ -394,7 +394,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         else:
             filename_ses_b = ""
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
-                                                          "%stask-%s_bold.json"%(filename_ses, sanitize_label(tasks_dict[task]['name']))), "w"),
+                                                          "%stask-%s_bold.json"%(filename_ses_b, sanitize_label(tasks_dict[task]['name']))), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
         
     convert_dataset_metadata(source_dir, dest_dir)
