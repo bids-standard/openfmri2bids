@@ -295,36 +295,41 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                             
                         if "Onset" not in beh_df.columns:
                             if "onset" not in beh_df.columns:
-                                beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
-                                if len(beh_df_no_header.index) == len(events_df.index):
-                                    events_df.sort(columns=["onset"], inplace=True)
-                                    events_df.index = range(len(events_df))
-                                    all_df = pd.concat([events_df, beh_df_no_header], axis=1)
-                                    unlabeled_beh = True
-                                elif len(beh_df.index) == len(events_df.index):
-                                    events_df.sort(columns=["onset"], inplace=True)
-                                    events_df.index = range(len(events_df))
-                                    all_df = pd.concat([events_df, beh_df], axis=1)
-                                    unlabeled_beh = True
+                                if "Cue_Onset" not in beh_df.columns:
+                                    beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
+                                    if len(beh_df_no_header.index) == len(events_df.index):
+                                        events_df.sort(columns=["onset"], inplace=True)
+                                        events_df.index = range(len(events_df))
+                                        all_df = pd.concat([events_df, beh_df_no_header], axis=1)
+                                        unlabeled_beh = True
+                                    elif len(beh_df.index) == len(events_df.index):
+                                        events_df.sort(columns=["onset"], inplace=True)
+                                        events_df.index = range(len(events_df))
+                                        all_df = pd.concat([events_df, beh_df], axis=1)
+                                        unlabeled_beh = True
+                                    else:
+                                        # behdata are not events
+                                        try:
+                                            beh_df = pd.read_csv(beh_path,
+                                                     sep=" ",
+                                                     engine="python",
+                                                     index_col=False
+                                                     )
+                                        except:
+                                            beh_df = pd.read_csv(beh_path,
+                                                     sep=",",
+                                                     engine="python",
+                                                     index_col=False
+                                                     )
+                                        beh_df["filename"] = path.join("func",
+                                                                       "%s_%s%s_bold.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
+                                        beh_df.set_index("filename", inplace=True)
+                                        scans_dfs.append(beh_df)
+                                        all_df = events_df
                                 else:
-                                    # behdata are not events
-                                    try:
-                                        beh_df = pd.read_csv(beh_path,
-                                                 sep=" ",
-                                                 engine="python",
-                                                 index_col=False
-                                                 )
-                                    except:
-                                        beh_df = pd.read_csv(beh_path,
-                                                 sep=",",
-                                                 engine="python",
-                                                 index_col=False
-                                                 )
-                                    beh_df["filename"] = path.join("func",
-                                                                   "%s%s%s_bold.nii.gz"%(BIDS_s, "task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
-                                    beh_df.set_index("filename", inplace=True)
-                                    scans_dfs.append(beh_df)
-                                    all_df = events_df
+                                    df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
+                                    df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
+                                    beh_df = pd.concat([df1, df2]).sort(columns=["Onset"])
                             else:
                                 beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
