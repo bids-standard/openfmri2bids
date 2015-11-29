@@ -13,6 +13,7 @@ import numpy as np
 import datetime
 import dateutil
 from sphinx.addnodes import desc, desc_addname
+import tokenize
 
 NII_HANDLING_OPTS = ['empty', 'move', 'copy', 'link']  # first entry is default
 
@@ -39,7 +40,7 @@ def convert_changelog(in_file, out_file):
     versions = {}
     date = None
     out_str = ""
-    for line in open(in_file).readlines():
+    for line in tokenize.open(in_file).readlines():
         if len(line.strip()) > 0:
             if len(line.split(":")) == 1:
                 out_str += "    " + desc
@@ -62,18 +63,24 @@ def convert_changelog(in_file, out_file):
 
 def convert_dataset_metadata(in_dir, out_dir):
     meta_dict = {}
+    meta_dict["BIDSVersion"] = "1.0.0rc2"
     
     study_key_file = os.path.join(in_dir, "study_key.txt")
     if os.path.exists(study_key_file):
-        meta_dict["Name"] = open(study_key_file).read().strip()
+        meta_dict["Name"] = tokenize.open(study_key_file).read().strip()
+    else:
+        if in_dir.endswith("/"):
+            meta_dict["Name"] = in_dir.split("/")[-1]
+        else:
+            meta_dict["Name"] = in_dir.split("/")[-2]
         
     ref_file = os.path.join(in_dir, "references.txt")
     if os.path.exists(ref_file):
-        meta_dict["ReferencesAndLinks"] = open(ref_file).read().strip()
+        meta_dict["ReferencesAndLinks"] = tokenize.open(ref_file).read().strip()
         
     lic_file = os.path.join(in_dir, "license.txt")
     if os.path.exists(lic_file):
-        meta_dict["License"] = open(lic_file).read().strip()
+        meta_dict["License"] = tokenize.open(lic_file).read().strip()
         
     json.dump(meta_dict, open(os.path.join(out_dir,
                                            "dataset_description.json"), "w"),
@@ -118,7 +125,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     for task in tasks:
         tasks_dict[task] = {"runs": set([s[8:] for s in os.listdir(path.join(source_dir, openfmri_subjects[0], "BOLD")) if s.startswith(task)])}
     
-    with open(os.path.join(source_dir, "models", "model001", "condition_key.txt")) as f:
+    with tokenize.open(os.path.join(source_dir, "models", "model001", "condition_key.txt")) as f:
         for line in f:
             if line.strip() == "":
                 break
@@ -130,7 +137,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 tasks_dict[task]["conditions"] = {}
             tasks_dict[task]["conditions"][condition] = condition_name
     
-    with open(os.path.join(source_dir, "task_key.txt")) as f:
+    with tokenize.open(os.path.join(source_dir, "task_key.txt")) as f:
         for line in f:
             words = line.split()
             tasks_dict[words[0]]['name'] = " ".join(words[1:])
@@ -164,7 +171,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anat"))
-        for anatomy_openfmri, anatomy_bids in anatomy_mapping.iteritems():
+        for anatomy_openfmri, anatomy_bids in anatomy_mapping.items():
             runs = [s[-10:-7] for s in glob(path.join(source_dir, 
                                                       openfmri_s, 
                                                       "anatomy", 
@@ -198,7 +205,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 handle_nii(nii_handling, src=src, dest=dst)
     
     scan_parameters_dict = {}
-    with open(os.path.join(source_dir, "scan_key.txt")) as f:
+    with tokenize.open(os.path.join(source_dir, "scan_key.txt")) as f:
         for line in f:
             items = line.split()
             if items[0] == "TR":
@@ -215,7 +222,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
 
                 dfs = []
                 parametric_columns = []
-                for condition_id, condition_name in tasks_dict[task]["conditions"].iteritems():
+                for condition_id, condition_name in tasks_dict[task]["conditions"].items():
                     # TODO: check if onsets are in seconds
                     fpath = os.path.join(source_dir, 
                                        openfmri_s, 
@@ -260,7 +267,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 if dfs:
                     events_df = pd.concat(dfs, ignore_index=True)
                     if(parametric_columns):
-                        events_df = events_df.sort(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], take_last=True)
+                        events_df = events_df.sort_values(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], keep='last')
                     events_df.drop('weight', axis=1, inplace=True)
                 else:
                     continue
@@ -298,12 +305,12 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 if "Cue_Onset" not in beh_df.columns:
                                     beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
                                     if len(beh_df_no_header.index) == len(events_df.index):
-                                        events_df.sort(columns=["onset"], inplace=True)
+                                        events_df.sort_values(by=["onset"], inplace=True)
                                         events_df.index = range(len(events_df))
                                         all_df = pd.concat([events_df, beh_df_no_header], axis=1)
                                         unlabeled_beh = True
                                     elif len(beh_df.index) == len(events_df.index):
-                                        events_df.sort(columns=["onset"], inplace=True)
+                                        events_df.sort_values(by=["onset"], inplace=True)
                                         events_df.index = range(len(events_df))
                                         all_df = pd.concat([events_df, beh_df], axis=1)
                                         unlabeled_beh = True
@@ -329,7 +336,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                 else:
                                     df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
                                     df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
-                                    beh_df = pd.concat([df1, df2]).sort(columns=["Onset"])
+                                    beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
                             else:
                                 beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
@@ -347,7 +354,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 else:
                     all_df = events_df
                 
-                all_df.sort(columns=["onset"], inplace=True)
+                all_df.sort_values(by=["onset"], inplace=True)
                 dest = path.join(dest_dir, 
                                  BIDS_s,
                                  folder_ses,
@@ -399,7 +406,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         else:
             filename_ses_b = ""
         json.dump(scan_parameters_dict, open(os.path.join(dest_dir, 
-                                                          "%stask-%s_bold.json"%(filename_ses_b, sanitize_label(tasks_dict[task]['name']))), "w"),
+                                                          "task-%s_bold.json"%(sanitize_label(tasks_dict[task]['name']))), "w"),
                   sort_keys=True, indent=4, separators=(',', ': '))
         
     convert_dataset_metadata(source_dir, dest_dir)
