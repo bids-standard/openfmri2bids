@@ -12,7 +12,6 @@ import pandas as pd
 import numpy as np
 import datetime
 import dateutil
-from sphinx.addnodes import desc, desc_addname
 import tokenize
 
 NII_HANDLING_OPTS = ['empty', 'move', 'copy', 'link']  # first entry is default
@@ -43,7 +42,7 @@ def convert_changelog(in_file, out_file):
     for line in tokenize.open(in_file).readlines():
         if len(line.strip()) > 0:
             if len(line.split(":")) == 1:
-                out_str += "    " + desc
+                out_str += "    " + line
             else:
                 if out_str:
                     versions[date] = out_str
