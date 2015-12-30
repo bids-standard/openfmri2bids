@@ -63,7 +63,7 @@ def convert_changelog(in_file, out_file):
 
 def convert_dataset_metadata(in_dir, out_dir):
     meta_dict = {}
-    meta_dict["BIDSVersion"] = "1.0.0rc2"
+    meta_dict["BIDSVersion"] = "1.0.0rc3"
     
     study_key_file = os.path.join(in_dir, "study_key.txt")
     if os.path.exists(study_key_file):
@@ -392,11 +392,16 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         id_dict = dict(zip(openfmri_subjects, BIDS_subjects))
         participants = pd.read_csv(dem_file, delimiter=r"\s+", skip_blank_lines=True)
         if "subject_id" in participants.columns:
-            participants["subject_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
+            participants["participant_id"] = participants["subject_id"].apply(lambda x: subject_template%int(x))
+            del participants["subject_id"]
         else:
             participants = pd.read_csv(dem_file, delimiter=r"\s+", header=None, names=["dataset", "subject_id", "sex", "age", "handedness", "ethnicity"], skip_blank_lines=True).drop(["dataset"], axis=1)
-            participants["subject_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
+            participants["participant_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
+            del participants["subject_id"]
         participants = participants.dropna(axis=1,how='all')
+        cols = participants.columns.tolist()
+        cols.insert(0, cols.pop(cols.index("participant_id")))
+        participants = participants[cols]
         participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a")
     
     for task in tasks:
