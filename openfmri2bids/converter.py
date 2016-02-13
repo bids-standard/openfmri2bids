@@ -122,7 +122,12 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     
     tasks_dict = {}
     for task in tasks:
-        tasks_dict[task] = {"runs": set([s[8:] for s in os.listdir(path.join(source_dir, openfmri_subjects[0], "BOLD")) if s.startswith(task)])}
+        print(os.listdir(path.join(source_dir, openfmri_subjects[0], "BOLD")))
+        print(openfmri_subjects[0])
+        runs_union = set()
+        for openfmri_s in openfmri_subjects:
+            runs_union = runs_union | set([s[8:] for s in os.listdir(path.join(source_dir, openfmri_s, "BOLD")) if s.startswith(task)])
+        tasks_dict[task] = {"runs": runs_union}
     
     with tokenize.open(os.path.join(source_dir, "models", "model001", "condition_key.txt")) as f:
         for line in f:
@@ -140,6 +145,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         for line in f:
             words = line.split()
             tasks_dict[words[0]]['name'] = " ".join(words[1:])
+
+    print(tasks_dict)
     
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         for task in tasks:
@@ -167,15 +174,21 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     
     anatomy_mapping = {"highres": "T1w",
                        "inplane": "inplaneT2"}
-                    
-    for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
-        mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anat"))
-        for anatomy_openfmri, anatomy_bids in anatomy_mapping.items():
-            runs = [s[-10:-7] for s in glob(path.join(source_dir, 
-                                                      openfmri_s, 
-                                                      "anatomy", 
+
+    for anatomy_openfmri, anatomy_bids in anatomy_mapping.items():
+        runs_union = set()
+
+        for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
+            subject_runs = [s[-10:-7] for s in glob(path.join(source_dir,
+                                                      openfmri_s,
+                                                      "anatomy",
                                                       "%s*.nii.gz"%anatomy_openfmri)) if len(s.split("/")[-1]) == len("%s000.nii.gz"%anatomy_openfmri)]
-            for run in runs:
+            runs_union = runs_union | set(subject_runs)
+
+        for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
+            mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anat"))
+
+            for run in runs_union:
                 src_run = run
                 if run == anatomy_openfmri[-3:]:
                     run = "001"
@@ -185,23 +198,25 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     int(run)
                 except:
                     continue
-                
-                if len([s for s in runs if s.isdigit()]) <= 1:
+
+                if len([s for s in runs_union if s.isdigit()]) <= 1:
                     trg_run = ""
                 else:
                     trg_run = "_run-%s"%run[1:]
-                    
-                dst = path.join(dest_dir, 
+
+                dst = path.join(dest_dir,
                                 BIDS_s,
                                 folder_ses,
                                 "anat",
                                 "%s%s%s_%s.nii.gz"%(BIDS_s, filename_ses, trg_run, anatomy_bids))
-                src = path.join(source_dir, 
-                                openfmri_s, 
-                                "anatomy", 
+                src = path.join(source_dir,
+                                openfmri_s,
+                                "anatomy",
                                 "%s%s.nii.gz"%(anatomy_openfmri, src_run))
-
-                handle_nii(nii_handling, src=src, dest=dst)
+                if os.path.exists(src):
+                    handle_nii(nii_handling, src=src, dest=dst)
+                else:
+                    print(src + " does not exists")
     
     scan_parameters_dict = {}
     with tokenize.open(os.path.join(source_dir, "scan_key.txt")) as f:
