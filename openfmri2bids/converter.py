@@ -307,6 +307,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                              )
                         if 'TrialOnset' in beh_df.columns:
                             beh_df.rename(columns={'TrialOnset': 'Onset'}, inplace=True)
+                        if 'Trial_Onset' in beh_df.columns:
+                            beh_df.rename(columns={'Trial_Onset': 'Onset'}, inplace=True)
                         if 'TR' in beh_df.columns:
                             beh_df["TR"] = (beh_df["TR"]-1)*scan_parameters_dict["RepetitionTime"]
                             beh_df["duration"] = beh_df['TR'].map(lambda x: scan_parameters_dict["RepetitionTime"])
@@ -316,7 +318,21 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                             
                         if "Onset" not in beh_df.columns:
                             if "onset" not in beh_df.columns:
-                                if "Cue_Onset" not in beh_df.columns:
+                                if "Cue_Onset" in beh_df.columns:
+                                    if "Stim_Onset" in beh_df.columns:
+                                        df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
+                                        df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
+                                        beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
+                                    else:
+                                        beh_df = beh_df.rename(columns={'Cue_Onset': 'Onset'}).sort_values(by=["Onset"])
+                                elif "CueOnset" in beh_df.columns:
+                                    if "StimOnset" in beh_df.columns:
+                                        df1 = beh_df.rename(columns={'CueOnset': 'Onset'}).drop(["StimOnset"], axis=1)
+                                        df2 = beh_df.rename(columns={'StimOnset': 'Onset'}).drop(["CueOnset"], axis=1)
+                                        beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
+                                    else:
+                                        beh_df = beh_df.rename(columns={'CueOnset': 'Onset'}).sort_values(by=["Onset"])
+                                else:
                                     beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
                                     if len(beh_df_no_header.index) == len(events_df.index):
                                         events_df.sort_values(by=["onset"], inplace=True)
@@ -347,10 +363,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                         beh_df.set_index("filename", inplace=True)
                                         scans_dfs.append(beh_df)
                                         all_df = events_df
-                                else:
-                                    df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
-                                    df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
-                                    beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
+                                
                             else:
                                 beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
