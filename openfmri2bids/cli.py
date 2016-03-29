@@ -7,7 +7,7 @@ from .converter import convert, NII_HANDLING_OPTS
 @click.argument('output_folder', required=True, type=click.Path())
 @click.option('--first_session_label', type=(str))
 @click.option('--additional_session', type=(str, click.Path()), multiple=True)
-@click.option('--nii_handling', type=click.Choice(NII_HANDLING_OPTS), default=NII_HANDLING_OPTS[0])
+@click.option('--nii_handling', type=click.Choice(NII_HANDLING_OPTS), default=NII_HANDLING_OPTS[2])
 def main(openfmri_dataset_path, output_folder, first_session_label,
          additional_session, nii_handling):
     """Convert OpenfMRI dataset to BIDS."""
