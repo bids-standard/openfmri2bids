@@ -9,6 +9,7 @@ Simply run:
 
     $ pip install git+https://github.com/INCF/openfmri2bids.git
 
+Requires Python 3.2 or higher!
 
 # Usage
 
