@@ -14,6 +14,8 @@ import datetime
 import dateutil
 import tokenize
 
+from functools import reduce
+
 NII_HANDLING_OPTS = ['empty', 'move', 'copy', 'link']  # first entry is default
 
 
@@ -62,7 +64,7 @@ def convert_changelog(in_file, out_file):
 
 def convert_dataset_metadata(in_dir, out_dir):
     meta_dict = {}
-    meta_dict["BIDSVersion"] = "1.0.0rc3"
+    meta_dict["BIDSVersion"] = "1.0.0rc4"
     
     study_key_file = os.path.join(in_dir, "study_key.txt")
     if os.path.exists(study_key_file):
@@ -179,30 +181,25 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         runs_union = set()
 
         for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
-            subject_runs = [s[-10:-7] for s in glob(path.join(source_dir,
+            subject_runs = [s.split("/")[-1] for s in glob(path.join(source_dir,
                                                       openfmri_s,
                                                       "anatomy",
-                                                      "%s*.nii.gz"%anatomy_openfmri)) if len(s.split("/")[-1]) == len("%s000.nii.gz"%anatomy_openfmri)]
+                                                      "%s*.nii.gz"%anatomy_openfmri))
+                            if len(s.split("/")[-1]) in [len("%s000.nii.gz"%anatomy_openfmri),
+                                                         len("%s.nii.gz" % anatomy_openfmri)]]
             runs_union = runs_union | set(subject_runs)
 
+        runs_union = sorted(list(runs_union))
         for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
             mkdir(path.join(dest_dir, BIDS_s, folder_ses, "anat"))
 
-            for run in runs_union:
+            for run_idx, run in enumerate(runs_union):
                 src_run = run
-                if run == anatomy_openfmri[-3:]:
-                    run = "001"
-                    src_run=""
-                # dirty hack
-                try:
-                    int(run)
-                except:
-                    continue
 
-                if len([s for s in runs_union if s.isdigit()]) <= 1:
+                if len(runs_union) == 1:
                     trg_run = ""
                 else:
-                    trg_run = "_run-%s"%run[1:]
+                    trg_run = "_run-%d"%run_idx
 
                 dst = path.join(dest_dir,
                                 BIDS_s,
@@ -212,7 +209,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 src = path.join(source_dir,
                                 openfmri_s,
                                 "anatomy",
-                                "%s%s.nii.gz"%(anatomy_openfmri, src_run))
+                                "%s"%src_run)
                 if os.path.exists(src):
                     handle_nii(nii_handling, src=src, dest=dst)
                 else:
@@ -277,15 +274,34 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     if len(tmp_df["weight"].unique()) != 1:
                         tmp_df[condition_name] = tmp_df["weight"]
                         parametric_columns.append(condition_name)
+                    tmp_df.drop('weight', axis=1, inplace=True)
                     dfs.append(tmp_df)
                 if dfs:
-                    events_df = pd.concat(dfs, ignore_index=True)
+                    if len(set([len(df) for df in dfs])) == 1:
+                        events_df = reduce(lambda left, right: pd.merge(left, right, on=['onset', 'duration'],
+                                                                        how="outer"), dfs)
+                    else:
+                        events_df = pd.concat(dfs, ignore_index=True)
                     if(parametric_columns):
                         events_df = events_df.sort_values(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], keep='last')
-                    events_df.drop('weight', axis=1, inplace=True)
+                    while 'trial_type_x' in events_df.columns:
+                        events_df.drop('trial_type_x', axis=1, inplace=True)
+                        events_df.drop('trial_type_y', axis=1, inplace=True)
                 else:
                     continue
-                
+
+                # check for RT encoded as duration
+                if len(events_df["onset"].unique()) != len(events_df["onset"]) and \
+                        (np.array([(events_df["duration"] == val).sum() for val in set(events_df["duration"])]) >
+                            len(events_df["duration"])/2.0).any():
+                    events_df["RT"] = 0
+                    for i, row in events_df.iterrows():
+                        if not row[[c for c in events_df.columns if c not in
+                                ["duration", "onset", "RT", "trial_type"]]].any():
+                            RT = row["duration"]
+                            events_df.loc[events_df["onset"] == row["onset"], "RT"] = RT
+                            events_df.drop(i, axis=0, inplace=True)
+
                 
                 beh_path = os.path.join(source_dir, 
                                         openfmri_s, 
@@ -307,8 +323,6 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                              )
                         if 'TrialOnset' in beh_df.columns:
                             beh_df.rename(columns={'TrialOnset': 'Onset'}, inplace=True)
-                        if 'Trial_Onset' in beh_df.columns:
-                            beh_df.rename(columns={'Trial_Onset': 'Onset'}, inplace=True)
                         if 'TR' in beh_df.columns:
                             beh_df["TR"] = (beh_df["TR"]-1)*scan_parameters_dict["RepetitionTime"]
                             beh_df["duration"] = beh_df['TR'].map(lambda x: scan_parameters_dict["RepetitionTime"])
@@ -318,21 +332,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                             
                         if "Onset" not in beh_df.columns:
                             if "onset" not in beh_df.columns:
-                                if "Cue_Onset" in beh_df.columns:
-                                    if "Stim_Onset" in beh_df.columns:
-                                        df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
-                                        df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
-                                        beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
-                                    else:
-                                        beh_df = beh_df.rename(columns={'Cue_Onset': 'Onset'}).sort_values(by=["Onset"])
-                                elif "CueOnset" in beh_df.columns:
-                                    if "StimOnset" in beh_df.columns:
-                                        df1 = beh_df.rename(columns={'CueOnset': 'Onset'}).drop(["StimOnset"], axis=1)
-                                        df2 = beh_df.rename(columns={'StimOnset': 'Onset'}).drop(["CueOnset"], axis=1)
-                                        beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
-                                    else:
-                                        beh_df = beh_df.rename(columns={'CueOnset': 'Onset'}).sort_values(by=["Onset"])
-                                else:
+                                if "Cue_Onset" not in beh_df.columns:
                                     beh_df_no_header = pd.read_csv(beh_path, sep=None, engine="python", index_col=False, header=None)
                                     if len(beh_df_no_header.index) == len(events_df.index):
                                         events_df.sort_values(by=["onset"], inplace=True)
@@ -363,13 +363,16 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                         beh_df.set_index("filename", inplace=True)
                                         scans_dfs.append(beh_df)
                                         all_df = events_df
-                                
+                                else:
+                                    df1 = beh_df.rename(columns={'Cue_Onset': 'Onset'}).drop(["Stim_Onset"], axis=1)
+                                    df2 = beh_df.rename(columns={'Stim_Onset': 'Onset'}).drop(["Cue_Onset"], axis=1)
+                                    beh_df = pd.concat([df1, df2]).sort_values(by=["Onset"])
                             else:
                                 beh_df.rename(columns={'onset': 'Onset'}, inplace=True)
                     
                         if not scans_dfs and not unlabeled_beh:
-                            events_df["approx_onset"] = np.around(events_df["onset"],1)
-                            beh_df["approx_onset"] = np.around(beh_df["Onset"],1)
+                            events_df["approx_onset"] = events_df["onset"].round(1)
+                            beh_df["approx_onset"] = beh_df["Onset"].round(1)
         
                             all_df = pd.merge(left=events_df, right=beh_df, left_on="approx_onset", right_on="approx_onset", how="outer")
         
@@ -380,7 +383,10 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                             all_df = all_df.drop(["Onset","approx_onset"], axis=1)
                 else:
                     all_df = events_df
-                
+
+                if 'RT' in all_df.columns:
+                    all_df.rename(columns={'RT': 'response_time'}, inplace=True)
+
                 all_df.sort_values(by=["onset"], inplace=True)
                 dest = path.join(dest_dir, 
                                  BIDS_s,
@@ -396,7 +402,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 cols = all_df.columns.tolist()
                 cols.insert(0, cols.pop(cols.index("onset")))
                 cols.insert(1, cols.pop(cols.index("duration")))
-                cols.insert(2, cols.pop(cols.index("trial_type")))
+                if "trial_type" in cols:
+                    cols.insert(2, cols.pop(cols.index("trial_type")))
                 all_df = all_df[cols]
                 
                 all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
