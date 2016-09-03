@@ -5,6 +5,7 @@ import os
 import shutil
 import json
 import re
+from collections import OrderedDict
 from os import path
 from glob import glob
 
@@ -63,8 +64,8 @@ def convert_changelog(in_file, out_file):
             f.write("\n\n".join(reversed(versions)))
 
 def convert_dataset_metadata(in_dir, out_dir):
-    meta_dict = {}
-    meta_dict["BIDSVersion"] = "1.0.0rc4"
+    meta_dict = OrderedDict()
+    meta_dict["BIDSVersion"] = "1.0.0"
     
     study_key_file = os.path.join(in_dir, "study_key.txt")
     if os.path.exists(study_key_file):
@@ -109,7 +110,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 pass
             else: raise
     
-    openfmri_subjects = [s.split(os.sep)[-1] for s in glob(path.join(source_dir, "sub*"))]
+    openfmri_subjects = sorted([s.split(os.sep)[-1] for s in glob(path.join(
+            source_dir, "sub*"))])
     print("OpenfMRI subject IDs: " + str(openfmri_subjects))
     n_digits = len(str(len(openfmri_subjects)))
     subject_template = "sub-%0" + str(n_digits) + "d"
@@ -215,7 +217,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 else:
                     print(src + " does not exists")
     
-    scan_parameters_dict = {}
+    scan_parameters_dict = OrderedDict()
     with tokenize.open(os.path.join(source_dir, "scan_key.txt")) as f:
         for line in f:
             items = line.split()
@@ -225,7 +227,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
         scans_dfs = []
         for task in tasks_dict.keys():
-            for run in tasks_dict[task]["runs"]:
+            for run in sorted(tasks_dict[task]["runs"]):
                 if len(tasks_dict[task]["runs"]) == 1:
                     trg_run = ""
                 else:
@@ -257,13 +259,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                          skip_blank_lines=True
                                         )
                     if tmp_df.duration.isnull().sum() > 0:
-                        tmp_df = pd.read_csv(os.path.join(source_dir, 
-                                                      openfmri_s, 
-                                                      "model", 
-                                                      "model001", 
-                                                      "onsets", 
-                                                      "%s_%s"%(task, run), 
-                                                      "%s.txt"%condition_id),
+                        tmp_df = pd.read_csv(fpath,
                                          sep=" ",
                                          names=["onset", "duration", "weight"], 
                                          header=None,
@@ -271,7 +267,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                          index_col=False
                                         )
                     tmp_df["trial_type"] = condition_name
-                    if len(tmp_df["weight"].unique()) != 1:
+                    if not (len(tmp_df["weight"].unique()) == 1 and \
+                                        tmp_df["weight"].unique()[0] == 1):
                         tmp_df[condition_name] = tmp_df["weight"]
                         parametric_columns.append(condition_name)
                     tmp_df.drop('weight', axis=1, inplace=True)
@@ -290,17 +287,26 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 else:
                     continue
 
+                #remove rows with zero duration:
+                if (events_df.duration == 0).sum() > 0:
+                    warning(str(events_df[events_df.duration == 0]))
+                    events_df = events_df[events_df.duration != 0]
+
                 # check for RT encoded as duration
+                pre_len = len(events_df["onset"].unique())
                 if len(events_df["onset"].unique()) != len(events_df["onset"]) and \
                         (np.array([(events_df["duration"] == val).sum() for val in set(events_df["duration"])]) >
-                            len(events_df["duration"])/2.0).any():
-                    events_df["RT"] = 0
+                            len(events_df["duration"])/2.0).any() and len(set(
+                    events_df["duration"])) > 1:
+                    events_df["RT"] = "n/a"
                     for i, row in events_df.iterrows():
-                        if not row[[c for c in events_df.columns if c not in
-                                ["duration", "onset", "RT", "trial_type"]]].any():
+                        if row[[c for c in events_df.columns if c not in
+                                ["duration", "onset", "RT",
+                                 "trial_type"]]].isnull().all():
                             RT = row["duration"]
                             events_df.loc[events_df["onset"] == row["onset"], "RT"] = RT
                             events_df.drop(i, axis=0, inplace=True)
+                assert(pre_len == len(events_df["onset"].unique()))
 
                 
                 beh_path = os.path.join(source_dir, 
@@ -393,11 +399,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                  folder_ses,
                                  "func",
                                  "%s%s%s%s_events.tsv"%(BIDS_s, filename_ses, "_task-%s"%sanitize_label(tasks_dict[task]['name']), trg_run))
-                #remove rows with zero duration:
-                if (all_df.duration == 0).sum() > 0:
-                    warning("%s original data had events with zero duration - removing."%dest)
-                    warning(str(all_df[all_df.duration == 0] ))
-                    all_df = all_df[all_df.duration != 0]
+
                 # put onset, duration and trial_type in front
                 cols = all_df.columns.tolist()
                 cols.insert(0, cols.pop(cols.index("onset")))
@@ -408,7 +410,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 
                 all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
                 
-        if scans_dfs:
+        if False: #scans_dfs: # broken for ds107
             all_df = pd.concat(scans_dfs)
             if filename_ses:
                 filename_ses_b = filename_ses[1:] + "_"
@@ -430,8 +432,15 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
             del participants["subject_id"]
         else:
             participants = pd.read_csv(dem_file, delimiter=r"\s+", header=None, names=["dataset", "subject_id", "sex", "age", "handedness", "ethnicity"], skip_blank_lines=True).drop(["dataset"], axis=1)
-            participants["participant_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
-            del participants["subject_id"]
+            if len(participants['subject_id'].unique()) == len(openfmri_subjects):
+                participants["participant_id"] = participants["subject_id"].apply(lambda x: id_dict[x])
+                del participants["subject_id"]
+            else:
+                participants = pd.read_csv(dem_file, delimiter=r"\t", skip_blank_lines=True)
+                participants["participant_id"] = participants[
+                    'MRI Sub Num'].apply(lambda x: subject_template % int(x))
+                del participants['MRI Sub Num']
+
         participants = participants.dropna(axis=1,how='all')
         cols = participants.columns.tolist()
         cols.insert(0, cols.pop(cols.index("participant_id")))
