@@ -71,10 +71,10 @@ def convert_dataset_metadata(in_dir, out_dir):
     if os.path.exists(study_key_file):
         meta_dict["Name"] = tokenize.open(study_key_file).read().strip()
     else:
-        if in_dir.endswith("/"):
-            meta_dict["Name"] = in_dir.split("/")[-1]
+        if in_dir.endswith(os.sep):
+            meta_dict["Name"] = in_dir.split(os.sep)[-1]
         else:
-            meta_dict["Name"] = in_dir.split("/")[-2]
+            meta_dict["Name"] = in_dir.split(os.sep)[-2]
         
     ref_file = os.path.join(in_dir, "references.txt")
     if os.path.exists(ref_file):
@@ -183,11 +183,11 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         runs_union = set()
 
         for openfmri_s, BIDS_s in zip(openfmri_subjects, BIDS_subjects):
-            subject_runs = [s.split("/")[-1] for s in glob(path.join(source_dir,
+            subject_runs = [s.split(os.sep)[-1] for s in glob(path.join(source_dir,
                                                       openfmri_s,
                                                       "anatomy",
                                                       "%s*.nii.gz"%anatomy_openfmri))
-                            if len(s.split("/")[-1]) in [len("%s000.nii.gz"%anatomy_openfmri),
+                            if len(s.split(os.sep)[-1]) in [len("%s000.nii.gz"%anatomy_openfmri),
                                                          len("%s.nii.gz" % anatomy_openfmri)]]
             runs_union = runs_union | set(subject_runs)
 
@@ -279,33 +279,54 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                                                                         how="outer"), dfs)
                     else:
                         events_df = pd.concat(dfs, ignore_index=True)
-                    if(parametric_columns):
-                        events_df = events_df.sort_values(parametric_columns, na_position="first").drop_duplicates(["onset", "duration"], keep='last')
                     while 'trial_type_x' in events_df.columns:
                         events_df.drop('trial_type_x', axis=1, inplace=True)
                         events_df.drop('trial_type_y', axis=1, inplace=True)
                 else:
                     continue
 
-                #remove rows with zero duration:
+
+                # check for RT encoded as duration
+                pre_len = len(events_df["onset"].unique())
+
+                if "trial_type" in events_df.columns:
+                    trial_types = events_df.trial_type.unique()
+                    events_df["RT"] = np.nan
+                    for trial_type in trial_types:
+                        if trial_type.endswith("RT"):
+                            trials_df = events_df[
+                                events_df.trial_type == trial_type]
+                            for i, row in trials_df.iterrows():
+                                RT = row["duration"]
+                                if RT == 0:
+                                    RT = np.nan
+                                events_df.loc[
+                                    events_df["onset"] == row["onset"], "RT"] = RT
+                    events_df = events_df.dropna(axis=1, how='all')
+                    events_df = events_df[
+                        ~events_df.trial_type.str.endswith("RT")]
+                if (parametric_columns):
+                    events_df = events_df.sort_values(parametric_columns,
+                                                      na_position="first").drop_duplicates(
+                        ["onset", "duration"], keep='last')
+                # remove rows with zero duration:
                 if (events_df.duration == 0).sum() > 0:
                     warning(str(events_df[events_df.duration == 0]))
                     events_df = events_df[events_df.duration != 0]
 
-                # check for RT encoded as duration
-                pre_len = len(events_df["onset"].unique())
-                if len(events_df["onset"].unique()) != len(events_df["onset"]) and \
-                        (np.array([(events_df["duration"] == val).sum() for val in set(events_df["duration"])]) >
-                            len(events_df["duration"])/2.0).any() and len(set(
-                    events_df["duration"])) > 1:
-                    events_df["RT"] = "n/a"
-                    for i, row in events_df.iterrows():
-                        if row[[c for c in events_df.columns if c not in
-                                ["duration", "onset", "RT",
-                                 "trial_type"]]].isnull().all():
-                            RT = row["duration"]
-                            events_df.loc[events_df["onset"] == row["onset"], "RT"] = RT
-                            events_df.drop(i, axis=0, inplace=True)
+
+                # if len(events_df["onset"].unique()) != len(events_df["onset"]) and \
+                #         (np.array([(events_df["duration"] == val).sum() for val in set(events_df["duration"])]) >
+                #             len(events_df["duration"])/2.0).any() and len(set(
+                #     events_df["duration"])) > 1:
+                #     events_df["RT"] = "n/a"
+                #     for i, row in events_df.iterrows():
+                #         if row[[c for c in events_df.columns if c not in
+                #                 ["duration", "onset", "RT",
+                #                  "trial_type"]]].isnull().all():
+                #             RT = row["duration"]
+                #             events_df.loc[events_df["onset"] == row["onset"], "RT"] = RT
+                #             events_df.drop(i, axis=0, inplace=True)
                 assert(pre_len == len(events_df["onset"].unique()))
 
                 
@@ -408,7 +429,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     cols.insert(2, cols.pop(cols.index("trial_type")))
                 all_df = all_df[cols]
                 
-                all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False)
+                all_df.to_csv(dest, sep="\t", na_rep="n/a", index=False,
+                              float_format="%.3f")
                 
         if False: #scans_dfs: # broken for ds107
             all_df = pd.concat(scans_dfs)
@@ -419,7 +441,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
             all_df.to_csv(path.join(dest_dir, 
                                     BIDS_s,
                                     folder_ses,
-                                    "%s%s_scans.tsv"%(filename_ses_b, BIDS_s)), sep="\t", na_rep="n/a", index=True)
+                                    "%s%s_scans.tsv"%(filename_ses_b, BIDS_s)), sep="\t", na_rep="n/a", index=True,
+                          float_format="%.3f")
             
     dem_file = os.path.join(source_dir,"demographics.txt")
     if not os.path.exists(dem_file):
@@ -445,7 +468,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         cols = participants.columns.tolist()
         cols.insert(0, cols.pop(cols.index("participant_id")))
         participants = participants[cols]
-        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a")
+        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a",
+                            float_format="%.3f")
     
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
