@@ -4,7 +4,10 @@ Created on 17 Sep 2015
 @author: filo
 '''
 import subprocess, os
-directory = "/Volumes/Samsung_T1/bids_examples/symlinked/"
+from convert_all_openfmri import output_data_dir
+directory = output_data_dir + "symlinked/"
 for ds in os.listdir(directory):
     print("tarring %s"%ds)
-    subprocess.call('tar cL --exclude="*Icon*" -f /Volumes/Samsung_T1/bids_examples/archives/%s.tar -C /Volumes/Samsung_T1/bids_examples/symlinked/ %s'%(ds, ds), shell=True)
+    subprocess.call('tar cL --exclude="*Icon*" -f %sarchives/%s.tar -C '
+                    '%ssymlinked/ %s'%(
+        output_data_dir, ds, output_data_dir, ds), shell=True)

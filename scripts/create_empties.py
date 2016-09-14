@@ -1,5 +1,7 @@
-source_folder = "/Volumes/Samsung_T1/bids_examples/symlinked"
-target_folder = "/Volumes/Samsung_T1/bids_examples/empty"
+from convert_all_openfmri import output_data_dir
+
+source_folder = output_data_dir+"symlinked"
+target_folder = output_data_dir+"empty"
 
 import shutil, os
 from glob import glob
@@ -9,6 +11,7 @@ except:
     pass
 
 import subprocess
+
 subprocess.call("cp -R %s %s"%(source_folder, target_folder), shell=True)
 
 for nii in glob(target_folder+"/*/*/*/*.*.gz") + glob(target_folder+"/*/*/*/*/*.*.gz"):
