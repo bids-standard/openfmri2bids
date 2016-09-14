@@ -6,27 +6,28 @@ import dateutil
 import os
 datasets = [
              'ds001_R1.1.0',
-             #  'ds002',
-             #  'ds003_R1.1.0',
+             'ds002',
+             'ds003_R1.1.0',
              'ds005_R1.1.0',
-             #  {"pre":'ds006A_R1.1.0_raw', "post":'ds006B'},
-             #  'ds007_R1.1.0',
-             #  'ds008_R1.1.1_raw',
-             #  'ds009_R1.1.0_raw',
-             #  'ds011',
-             #  #{"test":"ds017A", "retest":"ds017B"},
-             #  'ds051',
-             #  'ds052',
-             #  'ds101',
-             #  'ds102',
-             #  'ds105',
-             # 'ds107',
-             #  #'ds108',
-             #  'ds109',
-             #  'ds110',
-              #'ds113b',
-            #  #'ds115' missing models
-              #'ds116'
+              {"pre":'ds006A_R1.1.0_raw', "post":'ds006B'},
+              'ds007_R1.1.0',
+              'ds008_R1.1.1_raw',
+              'ds009_R1.1.0_raw',
+              'ds011',
+              #{"test":"ds017A", "retest":"ds017B"},
+              'ds051',
+              'ds052',
+              'ds101',
+              'ds102',
+              'ds105',
+              'ds107',
+              'ds108',
+              'ds109',
+              'ds110',
+              'ds113b',
+             # 'ds114',
+             #'ds115' missing models
+              'ds116'
             ]
 
 def ds113b_converter(in_file, out_file):
@@ -43,10 +44,10 @@ def ds113b_converter(in_file, out_file):
 
 custom_chngelog_converters = {"ds113b": ds113b_converter}
 
-#input_data_dir = "/Users/filo/data/openfmri/"
-input_data_dir = "D:\OpenfMRI"
-#output_data_dir = "/Users/filo/data/openfmri_BIDS/"
-output_data_dir = "D:\OpenfMRI_BIDS"
+input_data_dir = "/Users/filo/data/openfmri/"
+#input_data_dir = "D:\OpenfMRI"
+output_data_dir = "/Users/filo/data/openfmri_BIDS/"
+#output_data_dir = "D:\OpenfMRI_BIDS"
 
 
 if __name__ == '__main__':
@@ -67,7 +68,7 @@ if __name__ == '__main__':
                 convert(input_data_dir+"%s/"%ds,
                         output_ds_dir,
                 ses=ses_label,
-                nii_handling='copy', **args)
+                nii_handling='link', **args)
         else:
             output_ds_dir = os.path.join(output_data_dir,
                                          "symlinked/%s/" % dataset)
@@ -80,7 +81,7 @@ if __name__ == '__main__':
                 args["changelog_converter"] = custom_chngelog_converters[dataset]
             convert(os.path.join(input_data_dir, "%s/"%dataset),
                     output_ds_dir,
-                    nii_handling='copy',
+                    nii_handling='link',
                     **args)
 
         subprocess.check_call('bids-validator %s --ignoreNiftiHeaders' % output_ds_dir, shell=True)

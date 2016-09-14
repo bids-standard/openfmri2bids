@@ -148,7 +148,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
     with tokenize.open(os.path.join(source_dir, "task_key.txt")) as f:
         for line in f:
             words = line.split()
-            tasks_dict[words[0]]['name'] = " ".join(words[1:])
+            if words[0] in tasks_dict.keys():
+                tasks_dict[words[0]]['name'] = " ".join(words[1:])
 
     print(tasks_dict)
     
@@ -201,7 +202,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                 if len(runs_union) == 1:
                     trg_run = ""
                 else:
-                    trg_run = "_run-%d"%run_idx
+                    trg_run = "_run-%02d"%(run_idx+1)
 
                 dst = path.join(dest_dir,
                                 BIDS_s,
@@ -275,7 +276,8 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
                     dfs.append(tmp_df)
                 if dfs:
                     if len(set([len(df) for df in dfs])) == 1:
-                        events_df = reduce(lambda left, right: pd.merge(left, right, on=['onset', 'duration'],
+                        events_df = reduce(lambda left, right: pd.merge(left,
+                                                                        right, on=['onset', 'duration', 'trial_type'],
                                                                         how="outer"), dfs)
                     else:
                         events_df = pd.concat(dfs, ignore_index=True)
@@ -468,8 +470,7 @@ def convert(source_dir, dest_dir, nii_handling=NII_HANDLING_OPTS[0], warning=pri
         cols = participants.columns.tolist()
         cols.insert(0, cols.pop(cols.index("participant_id")))
         participants = participants[cols]
-        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a",
-                            float_format="%.3f")
+        participants.to_csv(os.path.join(dest_dir, "participants.tsv"), sep="\t", index=False, na_rep="n/a")
     
     for task in tasks:
         scan_parameters_dict["TaskName"] = tasks_dict[task]['name']
